@@ -8,7 +8,8 @@ classdef Forklift_def < handle
         dt; % Time integration step
         d; % axes length
 
-        K;
+        K_r;
+        K_l;
 
         instance_selected;
         steps_in_range;
@@ -33,10 +34,10 @@ classdef Forklift_def < handle
 
     methods
         
-        function obj = Forklift_def(initial_state,d,dt,K,nM,NaN)
+        function obj = Forklift_def(initial_state,d,dt,K_r,K_l,nM,NaN)
 
             % State
-            obj.x=zeros(9,1); % initialize to 0 all the state
+            obj.x=zeros(3,1); % initialize to 0 all the state
             
             % Then assign to obj.x the initial state we pass to it
             for i =1:length(initial_state)
@@ -49,7 +50,8 @@ classdef Forklift_def < handle
             obj.d = d;
             
             obj.dt = dt; % Integration time step
-            obj.K = K;
+            obj.K_r = K_r;
+            obj.K_l = K_l;
 
             obj.instance_selected = nM;
             obj.steps_in_range = 0;
@@ -68,7 +70,7 @@ classdef Forklift_def < handle
 
             obj.odometry_estimation = {[0,0], zeros(2,2)};
 
-            obj.P_cov = zeros(9,9);
+            obj.P_cov = zeros(3,3);
 
         end
 
@@ -87,89 +89,75 @@ classdef Forklift_def < handle
 
 
 
-        function x_next = dynamics(obj,u_a_t,u_a_omega)
+        function x_next = dynamics(obj,u_v_t,u_omega)
 
-            [a_t_r,a_t_l] = calculus_acc(obj,u_a_t,u_a_omega); % measurements
+            [a_t_r,a_t_l] = calculus_acc(obj,u_v_t,u_omega); % measurements
+
+            % Acceleration in frame t-n (along n no acceleration/velocity because supposing no slippage)
+            a_t = (a_t_r + a_t_l)/2; 
            
 
             % Change velocity and acceleration reference frame from t-n to x-y
-            v_x = obj.x(4)*cos(obj.x(3)) - obj.x(5)*sin(obj.x(3));
-            v_y = obj.x(4)*sin(obj.x(3)) + obj.x(5)*cos(obj.x(3));
+            v_x = u_v_t *cos(obj.x(3));
+            v_y = u_v_t *sin(obj.x(3));
 
-            a_x = u_a_t *cos(obj.x(3)) - obj.x(8)*sin(obj.x(3));
-            a_y = u_a_t *sin(obj.x(3)) + obj.x(8)*cos(obj.x(3));
+            a_x = a_t *cos(obj.x(3));
+            a_y = a_t *sin(obj.x(3));
 
 
             % State dynamics
             obj.x(1) = obj.x(1) + obj.dt*v_x + 0.5*a_x*obj.dt^2;
             obj.x(2) = obj.x(2) + obj.dt*v_y + 0.5*a_y*obj.dt^2;
-            obj.x(3) = obj.x(3) + obj.dt*obj.x(6) + 0.5*(u_a_omega)*obj.dt^2;
-            v_x = v_x + obj.dt*a_x; 
-            v_y = v_y + obj.dt*a_y;
-            obj.x(6) = obj.x(6) + obj.dt*u_a_omega;
-
-            % Change velocity reference frame from x-y to t-n
-            obj.x(4) = v_x*cos(obj.x(3)) + v_y*sin(obj.x(3));
-            obj.x(5) = - v_x*sin(obj.x(3)) + v_y*cos(obj.x(3));
+            obj.x(3) = obj.x(3) + obj.dt*u_omega + 0.5*u_omega*obj.dt;
+      
             
-            % Input
-            obj.x(7) = u_a_t;
-            obj.x(9) = u_a_omega;
-
             
-            x_next = [obj.x(1) obj.x(2) obj.x(3) obj.x(4) obj.x(5) obj.x(6) obj.x(7) obj.x(8) obj.x(9)];
+            x_next = [obj.x(1) obj.x(2) obj.x(3)];
         
         end
 
 
-        function odometry_estimation = odometry_step(obj,u_a_t,u_a_omega)
+        function odometry_estimation = odometry_step(obj,u_v_t,u_omega)
 
 
-            [a_t_r,a_t_l] = calculus_acc(obj,u_a_t,u_a_omega);
+            [a_t_r,a_t_l] = calculus_acc(obj,u_v_t,u_omega);
 
-            a_t_r = a_t_r + normrnd(0,sqrt(obj.K*abs(a_t_r)));
-            a_t_l = a_t_l + normrnd(0,sqrt(obj.K*abs(a_t_l)));
+            % Adding noise to accelerometers
+            a_t_r = a_t_r + normrnd(0,sqrt(obj.K_r*abs(a_t_r)));
+            a_t_l = a_t_l + normrnd(0,sqrt(obj.K_l*abs(a_t_l)));
             
-
-            a_t_est = (a_t_r + a_t_l)/2;
-            a_w_est = (a_t_r - a_t_l)/obj.d;
+            % Estimeted velocity and omega
+            v_t_est   = (a_t_r + a_t_l)*obj.dt/2;
+            omega_est = (a_t_r - a_t_l)*obj.dt/obj.d;
          
 
             % Change velocity and acceleration reference frame from t-n to x-y
-            v_x_est = obj.x_est(4)*cos(obj.x_est(3)) - obj.x_est(5)*sin(obj.x_est(3));
-            v_y_est = obj.x_est(4)*sin(obj.x_est(3)) + obj.x_est(5)*cos(obj.x_est(3));
+            v_x_est = v_t_est*cos(obj.x_est(3));
+            v_y_est = v_t_est*sin(obj.x_est(3));
 
-            a_x_est = a_t_est *cos(obj.x_est(3)) - obj.x(8)*sin(obj.x_est(3));
-            a_y_est = a_t_est *sin(obj.x_est(3)) + obj.x(8)*cos(obj.x_est(3));
+            a_x_est = 0.5*(a_t_r + a_t_l) *cos(obj.x_est(3));
+            a_y_est = 0.5*(a_t_r + a_t_l) *sin(obj.x_est(3));
+
+          
 
             % State dynamics
             obj.x_est(1) = obj.x_est(1) + obj.dt*v_x_est + 0.5*a_x_est*obj.dt^2;
             obj.x_est(2) = obj.x_est(2) + obj.dt*v_y_est + 0.5*a_y_est*obj.dt^2;
-            obj.x_est(3) = obj.x_est(3) + obj.dt*obj.x_est(6) + 0.5*a_w_est*obj.dt^2;
-            v_x_est = v_x_est + obj.dt*a_x_est; 
-            v_y_est = v_y_est + obj.dt*a_y_est;
-            obj.x_est(6) = obj.x_est(6) + obj.dt*a_w_est;
-
-            % Change velocity reference frame from x-y to t-n
-            obj.x_est(4) = v_x_est*cos(obj.x_est(3)) + v_y_est*sin(obj.x_est(3));
-            obj.x_est(5) = - v_x_est*sin(obj.x_est(3)) + v_y_est*cos(obj.x_est(3));
-
-            obj.x_est(7) = a_t_est;
-            obj.x_est(9) = a_w_est;
-
-           
-            Q = [obj.K*abs(a_t_r), 0; 0, obj.K*abs(a_t_l)];
-            obj.odometry_estimation = {[a_t_est a_w_est], Q};
+            obj.x_est(3) = obj.x_est(3) + obj.dt*omega_est + 0.5*omega_est*obj.dt;
+            
+            % Odometry estimation
+            Q = [obj.K_r*abs(a_t_r), 0; 0, obj.K_l*abs(a_t_l)];
+            obj.odometry_estimation = {[v_t_est omega_est], Q};
             odometry_estimation = obj.odometry_estimation;
             
 
         end
 
 
-        function  [a_t_r,a_t_l] = calculus_acc(obj,a_t,a_w)
+        function  [a_t_r,a_t_l] = calculus_acc(obj,v_t,omega)
             
-            a_t_r = a_t + obj.d/2 *a_w;
-            a_t_l = a_t - obj.d/2*a_w;
+            a_t_r = (2*v_t + omega*obj.d)/(2*obj.dt);
+            a_t_l = (2*v_t - omega*obj.d)/(2*obj.dt);
            
         end
 
