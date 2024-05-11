@@ -1,8 +1,8 @@
 classdef Forklift_def < handle
 
     properties
-        x; % state of the robot 9*1
-        x_est; % estimated state of the robot 9*1
+        x; % state of the robot 3*1
+        x_est; % estimated state of the robot 3*1
  
         % OTHERS
         dt; % Time integration step
@@ -38,6 +38,7 @@ classdef Forklift_def < handle
 
             % State
             obj.x=zeros(3,1); % initialize to 0 all the state
+            obj.x_est = zeros(3,1); % initialize to 0 all the state
             
             % Then assign to obj.x the initial state we pass to it
             for i =1:length(initial_state)
@@ -81,8 +82,6 @@ classdef Forklift_def < handle
         end
 
 
-
-
         function state_odometry = get_odometry_state(obj)
             state_odometry = obj.x_est;
         end
@@ -91,77 +90,112 @@ classdef Forklift_def < handle
 
         function x_next = dynamics(obj,u_v_t,u_omega)
 
-            [a_t_r,a_t_l] = calculus_acc(obj,u_v_t,u_omega); % measurements
 
-            % Acceleration in frame t-n (along n no acceleration/velocity because supposing no slippage)
-            a_t = (a_t_r + a_t_l)/2; 
+            % Speed sensor measurements retrieve
+            [vt_r,vt_l] = calculus_vec(obj,u_v_t,u_omega);
+
+            %{
+            if (abs(vt_r - vt_l) > 0.5 )
+
+                % To solve the forward kinematics we have to identify firstly
+                % the istantaneous center of rotation
+
+                % ICR radius:
+                r = (obj.d/2)*(vt_r + vt_l)/(vt_r - vt_l);
+
+                % ICR coordinates:
+                ICR_x = obj.x(1) - r*sin(obj.x(3));
+                ICR_y = obj.x(2) + r*cos(obj.x(3));
+
+                % State kinematics:
+                obj.x(1) = r*cos( ((vt_r-vt_l)/obj.d)*obj.dt )*sin(obj.x(3)) + r*cos(obj.x(3))*sin( ((vt_r-vt_l)/obj.d)*obj.dt ) + ICR_x;
+                obj.x(2) = r*sin( ((vt_r-vt_l)/obj.d)*obj.dt )*sin(obj.x(3)) - r*cos(obj.x(3))*cos( ((vt_r-vt_l)/obj.d)*obj.dt ) + ICR_y;
+                obj.x(3) = obj.x(3) + ((vt_r-vt_l)/obj.d)*obj.dt;
+
            
 
-            % Change velocity and acceleration reference frame from t-n to x-y
-            v_x = u_v_t *cos(obj.x(3));
-            v_y = u_v_t *sin(obj.x(3));
-
-            a_x = a_t *cos(obj.x(3));
-            a_y = a_t *sin(obj.x(3));
+            else
+            %}
+           
 
 
-            % State dynamics
-            obj.x(1) = obj.x(1) + obj.dt*v_x + 0.5*a_x*obj.dt^2;
-            obj.x(2) = obj.x(2) + obj.dt*v_y + 0.5*a_y*obj.dt^2;
-            obj.x(3) = obj.x(3) + obj.dt*u_omega + 0.5*u_omega*obj.dt;
-      
-            
-            
+                obj.x(1) = obj.x(1) + ((vt_r + vt_l)/2)*obj.dt*cos(obj.x(3));
+                obj.x(2) = obj.x(2) + ((vt_r + vt_l)/2)*obj.dt*sin(obj.x(3));
+                obj.x(3) = obj.x(3) + ((vt_r - vt_l)/obj.d)*obj.dt;
+
+
+            %end
+
+            % Update
             x_next = [obj.x(1) obj.x(2) obj.x(3)];
         
         end
 
 
         function odometry_estimation = odometry_step(obj,u_v_t,u_omega)
-
-
-            [a_t_r,a_t_l] = calculus_acc(obj,u_v_t,u_omega);
-
-            % Adding noise to accelerometers
-            a_t_r = a_t_r + normrnd(0,sqrt(obj.K_r*abs(a_t_r)));
-            a_t_l = a_t_l + normrnd(0,sqrt(obj.K_l*abs(a_t_l)));
             
-            % Estimeted velocity and omega
-            v_t_est   = (a_t_r + a_t_l)*obj.dt/2;
-            omega_est = (a_t_r - a_t_l)*obj.dt/obj.d;
-         
+            % Speed sensor measurements retrieve
+            [vt_r,vt_l] = calculus_vec(obj,u_v_t,u_omega);
 
-            % Change velocity and acceleration reference frame from t-n to x-y
-            v_x_est = v_t_est*cos(obj.x_est(3));
-            v_y_est = v_t_est*sin(obj.x_est(3));
+            % Adding noise to speed sensor measurements
+            vt_r = vt_r + normrnd(0,sqrt(obj.K_r*abs(vt_r)));
+            vt_l = vt_l + normrnd(0,sqrt(obj.K_l*abs(vt_l)));
 
-            a_x_est = 0.5*(a_t_r + a_t_l) *cos(obj.x_est(3));
-            a_y_est = 0.5*(a_t_r + a_t_l) *sin(obj.x_est(3));
+            %disp([vt_r,vt_l]);
 
-          
+            vt_est    = (vt_r + vt_l)/2;
+            omega_est = (vt_r - vt_l)/obj.d;
 
-            % State dynamics
-            obj.x_est(1) = obj.x_est(1) + obj.dt*v_x_est + 0.5*a_x_est*obj.dt^2;
-            obj.x_est(2) = obj.x_est(2) + obj.dt*v_y_est + 0.5*a_y_est*obj.dt^2;
-            obj.x_est(3) = obj.x_est(3) + obj.dt*omega_est + 0.5*omega_est*obj.dt;
+            %{
+            if (abs(vt_r - vt_l) > 0.5 )
+
+                % To solve the forward kinematics we have to identify firstly
+                % the istantaneous center of rotation
+    
+                % ICR radius:
+                r = (obj.d/2)*(vt_r + vt_l)/(vt_r - vt_l);
+    
+                % ICR coordinates:
+                ICR_x = obj.x_est(1) - r*sin(obj.x_est(3));
+                ICR_y = obj.x_est(2) + r*cos(obj.x_est(3));
+    
+                % State kinematics:
+                obj.x_est(1) = r*cos( ((vt_r-vt_l)/obj.d)*obj.dt )*sin(obj.x_est(3)) + r*cos(obj.x_est(3))*sin( ((vt_r-vt_l)/obj.d)*obj.dt ) + ICR_x;
+                obj.x_est(2) = r*sin( ((vt_r-vt_l)/obj.d)*obj.dt )*sin(obj.x_est(3)) - r*cos(obj.x_est(3))*cos( ((vt_r-vt_l)/obj.d)*obj.dt ) + ICR_y;
+                obj.x_est(3) = obj.x_est(3) + ((vt_r-vt_l)/obj.d)*obj.dt;
+
+            else
+            %}
+            
+
+                obj.x_est(1) = obj.x_est(1) + vt_est*obj.dt*cos(obj.x_est(3));
+                obj.x_est(2) = obj.x_est(2) + vt_est*obj.dt*sin(obj.x_est(3));
+                obj.x_est(3) = obj.x_est(3) + omega_est*obj.dt;
+
+           %end
+
             
             % Odometry estimation
-            Q = [obj.K_r*abs(a_t_r), 0; 0, obj.K_l*abs(a_t_l)];
-            obj.odometry_estimation = {[v_t_est omega_est], Q};
+            Q = [obj.K_r*abs(vt_r), 0; 0, obj.K_l*abs(vt_l)];
+            obj.odometry_estimation = {[vt_est omega_est], Q};
             odometry_estimation = obj.odometry_estimation;
             
-
         end
 
 
-        function  [a_t_r,a_t_l] = calculus_acc(obj,v_t,omega)
-            
-            a_t_r = (2*v_t + omega*obj.d)/(2*obj.dt);
-            a_t_l = (2*v_t - omega*obj.d)/(2*obj.dt);
+        % Retrieve sensor velocity measurements from input
+        function  [vt_r,vt_l] = calculus_vec(obj,v_t,omega)
+           
+           % Calculus of right and left front wheels speed 
+           vt_r = (2*v_t + obj.d*omega)/2;
+           vt_l = (2*v_t - obj.d*omega)/2;
            
         end
 
-        function distance = getDistance (obj,x_t,y_t)
+        
+
+        % Distance of robot from target
+        function distance = getDistance(obj,x_t,y_t)
 
             x_r = obj.x(1);
             y_r = obj.x(2);

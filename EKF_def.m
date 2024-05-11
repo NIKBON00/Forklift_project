@@ -53,65 +53,97 @@ classdef EKF_def<handle
 
 
         % Function that computes the prediction step of state
-        function EKF_prediction(obj,accelerometer_readings,dt,d)
+        function EKF_prediction(obj,speed_readings,dt,d)
 
-            o_v_t = accelerometer_readings{1,1}(1);
-            o_omega = accelerometer_readings{1,1}(2);
+            o_v_t = speed_readings{1,1}(1);
+            o_omega = speed_readings{1,1}(2);
 
-  
+            %vt_r = (2*o_v_t + d*o_omega)/2;
+            %vt_l = (2*o_v_t - d*o_omega)/2;
+
             % process noise covariance matrix
-            Q = accelerometer_readings{1,2};
+            Q = speed_readings{1,2};
             
             
             % Current states
             x_curr = obj.x(1);
             y_curr = obj.x(2);
             theta_curr = obj.x(3);
+           
 
             % Current covariance state estimation errors
             P_curr = obj.P;
 
+            % Jacobian of state initialization
+            F = zeros(3,3);
+
+            % Jacobian of noise initialization
+            W = zeros(3,2);
+
   
 
             %% PREDICTION STEP
-            % STATE DYNAMICS
+            % STATE KINEMATICS
 
-            % Change reference frame from t-n to x-y
-            v_x_curr = o_v_t*cos(theta_curr);
-            v_y_curr = o_v_t*sin(theta_curr);
+            %{
+            if (abs(vt_r - vt_l) > 0.5 )
+
+                % ICR radius:
+                r = o_v_t/o_omega;
+    
+                % ICR coordinates:
+                ICR_x = x_curr - r*sin(theta_curr);
+                ICR_y = y_curr + r*cos(theta_curr);
+    
+                % State kinematics:
+                x_next = r*cos(o_omega*dt)*sin(theta_curr) + r*cos(theta_curr)*sin(o_omega*dt) + ICR_x;
+                y_next = r*sin(o_omega*dt)*sin(theta_curr) - r*cos(theta_curr)*cos(o_omega*dt) + ICR_y;
+                theta_next = theta_curr + o_omega*dt;
 
 
-            a_x_curr = (o_v_t/dt)*cos(theta_curr);
-            a_y_curr = (o_v_t/dt)*sin(theta_curr);
+                % Jacobian of State
+                F(1,1) = 1;
+                F(1,3) = r*cos(o_omega*dt)*cos(theta_curr) - r*sin(o_omega*dt)*sin(theta_curr) - r*cos(theta_curr);
+                F(2,2) = 1;
+                F(2,3) = r*sin(o_omega*dt)*cos(theta_curr) + r*cos(o_omega*dt)*sin(theta_curr) - r*sin(theta_curr);
+                F(3,3) = 1;
+
+                % Jacobian of Noise
+                %W()
+
+
+
+            else
+            %}
             
 
-            % State Dynamics
-            x_next = x_curr +  dt*v_x_curr + 0.5*a_x_curr*dt^2;
-            y_next = y_curr +  dt*v_y_curr + 0.5*a_y_curr*dt^2;
-            theta_next = theta_curr + dt*o_omega + 0.5*o_omega*dt;
+                x_next = x_curr + o_v_t*dt*cos(theta_curr);
+                y_next = y_curr + o_v_t*dt*sin(theta_curr);
+                theta_next = theta_curr + o_omega*dt;
+
+                % Jacobian of State
+                F(1,1) = 1;
+                F(1,3) = -o_v_t*dt*sin(theta_curr);
+                F(2,2) = 1;
+                F(2,3) = o_v_t*dt*cos(theta_curr);
+                F(3,3) = 1;
+
+                % Jacobian of Noise
+                W(1,1) = 0.5*dt*cos(theta_curr);
+                W(1,2) = 0.5*dt*cos(theta_curr);
+                W(2,1) = 0.5*dt*sin(theta_curr);
+                W(2,2) = 0.5*dt*sin(theta_curr);
+                W(3,1) = dt/d;
+                W(3,2) = -dt/d;
 
 
+            %end
+        
             % State
             obj.x = [x_next;y_next;theta_next];
 
-
-            %% JACOBIAN OF STATE
-           F = zeros(3,3);
-           F(1,1) = 1;
-           F(2,2) = 1;
-           F(3,3) = 1;
-
-
-           %% JACOBIAN OF NOISE
-           W = zeros(3,2);
-           W(1,1) = 0.25*cos(theta_curr)*dt^2 + cos(theta_curr)*dt/2;
-           W(1,2) = 0.25*cos(theta_curr)*dt^2 + cos(theta_curr)*dt/2;
-           W(2,1) = 0.25*sin(theta_curr)*dt^2 + sin(theta_curr)*dt/2;
-           W(2,2) = 0.25*sin(theta_curr)*dt^2 + sin(theta_curr)*dt/2;
-           W(3,1) = 1.5*(1/d)*dt^2;
-           W(3,2) = - 1.5*(1/d)*dt^2;
+          
            
-
            
            %% PREDICTION STEP COVARIANCE STATE
 
@@ -124,10 +156,11 @@ classdef EKF_def<handle
         % Function that does the correction step of the filter
         function EKF_correction(obj,sigma_meas,measurements_readings)
 
+            % Rename state and covariance matrix
             x_curr = obj.x(1);
             y_curr = obj.x(2);
             theta_curr = obj.x(3);
-
+          
             P_curr = obj.P;
 
             % Measurement noise covariance matrix
@@ -137,8 +170,8 @@ classdef EKF_def<handle
             H = zeros(3,3);
             H(1,1) = 1;
             H(2,2) = 1;
-            H(3,3) = 1;
-
+            H(3,3) = 1;         
+            
 
             Kalman_gain = P_curr*H'*pinv(H*P_curr*H'+R);
 
@@ -159,8 +192,7 @@ classdef EKF_def<handle
             x_next = state_next(1);
             y_next = state_next(2);
             theta_next = state_next(3);
-            
-            
+                      
 
             obj.x = [x_next,y_next,theta_next];
 

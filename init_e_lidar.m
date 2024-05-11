@@ -13,9 +13,9 @@ d=1.5;
 weigh_init = 0;
 K_r = 0.03;
 K_l = 0.03;
-targets = [30,25];
+targets = [30,55];
 Kp_v_t = 2;
-Kp_omega = 3;
+Kp_omega = 50;
 sigma_meas = [0.1 0.1 0.1]; 
 to_grad = 180/pi;
 
@@ -35,10 +35,44 @@ EKF_x = zeros(nRobots,nM);
 EKF_y = zeros(nRobots,nM);
 EKF_theta = zeros(nRobots,nM);
 
+inital_state = [10,40,0]; % zeros(3,1);
+
+% Create a binary warehouse map and place obstacles at defined locations
+map = helperCreateBinaryOccupancyMap;
+
+% Visualize map with obstacles and AGV
+figure();
+show(map);
+title('Warehouse Floor Plan With Obstacles and robot');
+for l=1:nM
+pose = [x_real_robot(1,l),y_real_robot(1,l),theta_real_robot(1,l)];
+helperPlotRobot(gca,pose);
+hold on
+end
+
+% Put lidar sensor
+lidar = rangeSensor;
+lidar.Range = [0 7];
+lidar.HorizontalAngle = [-pi/2, pi/2];
+lidar.HorizontalAngleResolution = pi/180;
+lidar.RangeNoise = 0.01;
+
+% Obstacle detection
+obstacle = 0;
+
+% Generate lidar readings
+pose = zeros(1,3);
+
+% Set up display
+display = helperVisualizer;
+
+% Plot warehouse map in the display window
+hRobot = plotBinaryMap(display,map,inital_state);
+
+
 %% ROBOT INITIALIZATION
 for i=1:nRobots
 
-    inital_state = [0,0,0]; % zeros(3,1);
     robot = Forklift_def(inital_state,d,dt,K_r,K_l,nM,NaN);
     robots = [robots,robot];
 
@@ -47,7 +81,7 @@ end
 %% EKF INITIALIZATION
 for i=1:nRobots
         MHEKFs(i) = EKF_def();
-        MHEKFs(i).EKF_init(0,[0,0,0],zeros(3,3));
+        MHEKFs(i).EKF_init(0,[10,40,0],zeros(3,3));
 end
 
 %% ROBOT TO TARGETS MOVEMENT
@@ -57,9 +91,71 @@ for i=1:nRobots
     
     for l=1:nM
 
-        % Controlled input
-        [v_t,omega] = controller(Kp_v_t,Kp_omega, target_considered(1),target_considered(2),robots(i).x_est);
+        obstacle = 0;
+        pose(i,:) = robots(i).x;
+        % Generate lidar readings
+        [ranges,angles] = lidar(pose(i,:),map);
+        % Scan 2D
+        scan = lidarScan(ranges,angles);
         
+        % Store 2-D scan as point cloud
+        cart = scan.Cartesian;
+        cart(:,3) = 0;
+        pc = pointCloud(cart); % the points generally represent the x,y, and z geometric coordinates for samples on a surface or of an environment
+        
+        % Segment point cloud into clusters based on euclidean distance
+        minDistance = 0.9;
+        [labels,numClusters] = pcsegdist(pc,minDistance); % segments a point cloud into clusters, with a minimum Euclidean distance of minDistance between points from different clusters
+        
+        % Update display map
+        updateMapDisplay(display,hRobot,pose(i,:));
+        
+        % Plot 2-D lidar scans
+        plotLidarScan(display,scan,pose(i,3));
+    
+        if exist('sc','var')
+            delete(sc)
+            clear sc
+        end
+    
+    
+        nearxy = zeros(numClusters,2);
+        maxlevel = -inf;
+        
+        % Loop through all the clusters in pc
+        for k = 1:numClusters
+            c = find(labels == k);
+            % XY coordinate extraction of obstacle
+            xy = pc.Location(c,1:2);
+        end
+    
+    
+        for k = 1:numClusters
+            % Display obstacles if exist in the mentioned range of axes3
+            sc(k,:) = displayObstacles(display,nearxy(k,:));
+        end
+        updateDisplay(display)
+        pause(0.01)
+
+        ranges = isnan(ranges);
+
+        for k = 1:length(ranges)
+                
+            if(ranges(k) ~= 1)
+                obstacle = 1;
+            end
+        end
+
+        % Search index for which obstacle is not detected
+        i_index = find(ranges);
+        i_index_obs = find(~ranges);
+        min_distance = min(ranges(i_index_obs));
+
+        disp(obstacle);
+
+        % Controlled input
+        [v_t,omega] = controller(Kp_v_t,Kp_omega, target_considered(1),target_considered(2),MHEKFs(i).x,obstacle,i_index,min_distance);
+
         % Update exact kinematics and state estimation with noise
         x_next = robots(i).dynamics(v_t,omega);
         odometry = robots(i).odometry_step(v_t,omega);
@@ -88,6 +184,8 @@ for i=1:nRobots
         if (robots(i).getDistance(target_considered(1),target_considered(2)) < 1  )
             %target_considered = targets(2,:);
         end
+
+ 
 
     end
 
@@ -162,14 +260,6 @@ ylabel('Error [°]');
 legend('Error theta [°]');
 title('Error: estimated state using EFK (UWB + speed sensors) vs Real position');
 hold off;
-
-
-
-
-
-
-
-
 
 
 
