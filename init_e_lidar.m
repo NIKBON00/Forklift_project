@@ -13,11 +13,15 @@ d=1.5;
 weigh_init = 0;
 K_r = 0.03;
 K_l = 0.03;
-targets = [30,55];
+targets = [50,20];
 Kp_v_t = 2;
-Kp_omega = 50;
+Kp_omega = 100;
+Ki_omega = 5;
+Kd_omega = 1;
 sigma_meas = [0.1 0.1 0.1]; 
 to_grad = 180/pi;
+activation = zeros(1,nRobots);
+target_tmp = [0,0];
 
 % Time vectors
 time = 0:dt:nM*dt-dt;
@@ -52,7 +56,7 @@ end
 
 % Put lidar sensor
 lidar = rangeSensor;
-lidar.Range = [0 7];
+lidar.Range = [0 4];
 lidar.HorizontalAngle = [-pi/2, pi/2];
 lidar.HorizontalAngleResolution = pi/180;
 lidar.RangeNoise = 0.01;
@@ -88,6 +92,7 @@ end
 for i=1:nRobots
     
     target_considered = targets(1,:);
+    activation(i)  = 0;
     
     for l=1:nM
 
@@ -151,11 +156,23 @@ for i=1:nRobots
         i_index_obs = find(~ranges);
         min_distance = min(ranges(i_index_obs));
 
-        disp(obstacle);
+        %disp(obstacle);
+
+        if (activation(i)==1)
+            target_considered(1) = target_tmp(1);
+            target_considered(2) = target_tmp(2);
+        
+        else 
+            target_considered = targets(1,:);
+        end
+
+        
 
         % Controlled input
-        [v_t,omega] = controller(Kp_v_t,Kp_omega, target_considered(1),target_considered(2),MHEKFs(i).x,obstacle,i_index,min_distance);
+        [v_t,omega,target_tmp,activation(i)] = controller(Kp_v_t,Kp_omega,Kd_omega, Ki_omega,dt,target_considered(1),target_considered(2),MHEKFs(i).x,obstacle,i_index,min_distance,activation(i),target_tmp, ranges);
 
+        disp(target_considered);
+        disp(activation);
         % Update exact kinematics and state estimation with noise
         x_next = robots(i).dynamics(v_t,omega);
         odometry = robots(i).odometry_step(v_t,omega);
