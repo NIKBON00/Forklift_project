@@ -63,11 +63,14 @@ classdef helperVisualizer < handle
         end
         
         function updateMapDisplay(obj,hRobot,robotCurrentPose)
-            % Update robot pose on the map
-            helperUpdateMap(hRobot, robotCurrentPose);
-            hold(obj.hAxes1,'on');
-            plot(obj.hAxes1,robotCurrentPose(1),robotCurrentPose(2),'g.')
-            hold(obj.hAxes1,'off');
+
+           
+                 % Update robot pose on the map
+                 helperUpdateMap(hRobot, robotCurrentPose);
+                 hold(obj.hAxes1,'on');
+                 plot(obj.hAxes1,robotCurrentPose(1),robotCurrentPose(2),'g.')
+                 hold(obj.hAxes1,'off');
+            
         end
         
         function plotLidarScan(obj,scan,currentOrientation)

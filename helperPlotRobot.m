@@ -1,6 +1,6 @@
 function robotHandle = helperPlotRobot(ax, pose, scale)
     if nargin < 3
-        scale = 0.5;
+        scale = 2;
     end
     % Update robot position
     t = pose(1:2);

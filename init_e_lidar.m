@@ -4,43 +4,84 @@ close all;
 
 %% PARAMETERS OF FIRST SIMULATION
 
-nRobots = 1;
-robots=[];
-dt = 0.01;
-nM = 2000;
-NaN = 1;
-d=1.5;
+% Simulation Set up: 
+Setup.dt = 0.01;                    % [s]
+Setup.Time = 0:Setup.dt:100;        % [s]
+
+% Number of steps:
+Setup.steps = Setup.Time/Setup.dt;        % [-]
+
+% Number of robots:
+nRobots = 2;
+robots=[];                          % Vector of robot structures
+
+% Parameter of robot:
+d = 1.5;                            % width [m]
+L = 2.8;                            % length [m]
+R = 0.23;                           % radius wheel [m]
 weigh_init = 0;
-K_r = 0.03;
-K_l = 0.03;
-targets = [50,20];
-Kp_v_t = 2;
-Kp_omega = 100;
-Ki_omega = 5;
-Kd_omega = 1;
-sigma_meas = [0.1 0.1 0.1]; 
-to_grad = 180/pi;
-activation = zeros(1,nRobots);
-target_tmp = [0,0];
+K_r = 0.01;                    % costant parameter contributing to noise in speed right sensor 
+K_l = 0.01;                    % costant parameter contributing to noise in speed left  sensor
+sigma_meas = [0.005 0.005 0.005];        % noise on UWB
 
-% Time vectors
-time = 0:dt:nM*dt-dt;
+% Collision avoidance variables:
+k_att = 1.1547;                     % attraction costant
+k_rep = 0.0932;                     % repulsion costant
+Kp_v_t = 20;                        % speed gain
+Kp_omega = 5;                       % omega gain
+dstar = 0.3;                        % threshold distance for type of attractive force [m]   
+rho_0 = 2.5;                        % safe distance [m]
+error_theta_max = deg2rad(45);      % error angle max [rad]
+v_max = 5;                        % [m/s] 
+omega_max = 0.8*pi;                 % [rad/s]
+n=1;                                % exponent of repulsion force
 
-% Define some vectors useful for plot
-x_real_robot = zeros(nRobots,nM);
-y_real_robot = zeros(nRobots,nM);
-theta_real_robot = zeros(nRobots,nM);
+% Entrance:
+inital_state = cell(nRobots,1);                 % [m]
 
-x_est_robot = zeros(nRobots,nM);
-y_est_robot = zeros(nRobots,nM);
-theta_est_robot = zeros(nRobots,nM);
+% Targets:
+targets = [45,20; 15, 40; 50, 40; 40, 19];      % [m]
 
-EKF_x = zeros(nRobots,nM);
-EKF_y = zeros(nRobots,nM);
-EKF_theta = zeros(nRobots,nM);
+% General variables:
+to_grad = 180/pi;       % [°]
+to_rad = pi/180;        % [rad]
 
-inital_state = [10,40,0]; % zeros(3,1);
+% Definition of vectors useful for plotting part:
+pose_est_UWB = cell(nRobots, length(Setup.steps));
+EKF_pose = cell(nRobots, length(Setup.steps));
 
+h1 = cell(nRobots,1);                           % useful for delete precedent position of robot during plotting
+
+% Incremental variable for plottinh:
+l = 1;
+nM = 1;
+reached = zeros(nRobots,1);
+
+% Location of UWB antenna:
+UWB_sens = [10,10; 10,40; 70,10; 70,50; 40, 36; 51, 22];
+
+% Position of UWB tags on the robot in robot reference frame, necessary 2
+% tags
+robots_tags = [0, L; 0, -L ]; 
+
+
+%% ROBOT INITIALIZATION
+
+for i=1:nRobots
+    inital_state{i} = [rand()*10 + 2, rand()*10 + 1 , rand()*2*pi];        % random entrace
+    robot = Forklift_def(inital_state{i},d,R,Setup.dt,K_r,K_l,nM,NaN);     % initialization of robot structure  
+    robots = [robots,robot];                                               % Add i-th robot to global vector
+end
+
+%% EKF INITIALIZATION
+
+for i=1:nRobots
+        EKFs{i} = EKF_def();
+        EKFs{i}.EKF_init(weigh_init,inital_state{i},zeros(3,3));
+end
+
+
+%% CREATE THE MAP
 % Create a binary warehouse map and place obstacles at defined locations
 map = helperCreateBinaryOccupancyMap;
 
@@ -48,21 +89,19 @@ map = helperCreateBinaryOccupancyMap;
 figure();
 show(map);
 title('Warehouse Floor Plan With Obstacles and robot');
-for l=1:nM
-pose = [x_real_robot(1,l),y_real_robot(1,l),theta_real_robot(1,l)];
-helperPlotRobot(gca,pose);
-hold on
+
+%% ADD ROBOTS TO THE MAP IN THEIR INITIAL POSITION
+for i=1:nRobots
+helperPlotRobot(gca,inital_state{i});
 end
 
+%% LIDAR PROPERTIES
 % Put lidar sensor
 lidar = rangeSensor;
-lidar.Range = [0 4];
+lidar.Range = [0 5];
 lidar.HorizontalAngle = [-pi/2, pi/2];
 lidar.HorizontalAngleResolution = pi/180;
 lidar.RangeNoise = 0.01;
-
-% Obstacle detection
-obstacle = 0;
 
 % Generate lidar readings
 pose = zeros(1,3);
@@ -70,215 +109,215 @@ pose = zeros(1,3);
 % Set up display
 display = helperVisualizer;
 
+hRobot = cell(nRobots, 1);
+
+for i = 1:nRobots
 % Plot warehouse map in the display window
-hRobot = plotBinaryMap(display,map,inital_state);
-
-
-%% ROBOT INITIALIZATION
-for i=1:nRobots
-
-    robot = Forklift_def(inital_state,d,dt,K_r,K_l,nM,NaN);
-    robots = [robots,robot];
-
+hRobot{i} = plotBinaryMap(display,map,inital_state{i});
 end
 
-%% EKF INITIALIZATION
-for i=1:nRobots
-        MHEKFs(i) = EKF_def();
-        MHEKFs(i).EKF_init(0,[10,40,0],zeros(3,3));
-end
 
 %% ROBOT TO TARGETS MOVEMENT
-for i=1:nRobots
-    
-    target_considered = targets(1,:);
-    activation(i)  = 0;
-    
-    for l=1:nM
 
-        obstacle = 0;
-        pose(i,:) = robots(i).x;
-        % Generate lidar readings
-        [ranges,angles] = lidar(pose(i,:),map);
-        % Scan 2D
-        scan = lidarScan(ranges,angles);
-        
-        % Store 2-D scan as point cloud
-        cart = scan.Cartesian;
-        cart(:,3) = 0;
-        pc = pointCloud(cart); % the points generally represent the x,y, and z geometric coordinates for samples on a surface or of an environment
-        
-        % Segment point cloud into clusters based on euclidean distance
-        minDistance = 0.9;
-        [labels,numClusters] = pcsegdist(pc,minDistance); % segments a point cloud into clusters, with a minimum Euclidean distance of minDistance between points from different clusters
-        
-        % Update display map
-        updateMapDisplay(display,hRobot,pose(i,:));
-        
-        % Plot 2-D lidar scans
-        plotLidarScan(display,scan,pose(i,3));
-    
-        if exist('sc','var')
-            delete(sc)
-            clear sc
-        end
-    
-    
-        nearxy = zeros(numClusters,2);
-        maxlevel = -inf;
-        
-        % Loop through all the clusters in pc
-        for k = 1:numClusters
-            c = find(labels == k);
-            % XY coordinate extraction of obstacle
-            xy = pc.Location(c,1:2);
-        end
-    
-    
-        for k = 1:numClusters
-            % Display obstacles if exist in the mentioned range of axes3
-            sc(k,:) = displayObstacles(display,nearxy(k,:));
-        end
-        updateDisplay(display)
-        pause(0.01)
+figure();
+show(map);
+hold on
 
-        ranges = isnan(ranges);
+for k=1:length(Setup.steps)
+    for i=1:nRobots
+            
+            % Target considered from i-th robot
+            target_considered = targets(i,:);
 
-        for k = 1:length(ranges)
-                
-            if(ranges(k) ~= 1)
-                obstacle = 1;
+            % Generate lidar readings
+            [ranges,angles] = lidar([robots(i).x(1) robots(i).x(2) robots(i).x(3)],map);
+            % Scan 2D
+            scan = lidarScan(ranges,angles);
+    
+            % Store 2-D scan as point cloud
+            cart = scan.Cartesian;
+            cart(:,3) = 0;
+            pc = pointCloud(cart); % the points generally represent the x,y, and z geometric coordinates for samples on a surface or of an environment
+    
+            % Segment point cloud into clusters based on euclidean distance
+            minDistance = 0.9;
+            [labels,numClusters] = pcsegdist(pc,minDistance); % segments a point cloud into clusters, with a minimum Euclidean distance of minDistance between points from different clusters
+    
+    
+            % Plot robot trajectory
+            plot(robots(i).x(1), robots(i).x(2),'.');
+            h1{i} = helperPlotRobot(gca,[robots(i).x(1), robots(i).x(2) robots(i).x(3)]);
+            
+            % Plot UWB antenna on the map
+            for s = 1:length(UWB_sens)
+                plot(UWB_sens(s,1), UWB_sens(s,2),'o');
+                hold on
             end
-        end
-
-        % Search index for which obstacle is not detected
-        i_index = find(ranges);
-        i_index_obs = find(~ranges);
-        min_distance = min(ranges(i_index_obs));
-
-        %disp(obstacle);
-
-        if (activation(i)==1)
-            target_considered(1) = target_tmp(1);
-            target_considered(2) = target_tmp(2);
-        
-        else 
-            target_considered = targets(1,:);
-        end
-
-        
-
-        % Controlled input
-        [v_t,omega,target_tmp,activation(i)] = controller(Kp_v_t,Kp_omega,Kd_omega, Ki_omega,dt,target_considered(1),target_considered(2),MHEKFs(i).x,obstacle,i_index,min_distance,activation(i),target_tmp, ranges);
-
-        disp(target_considered);
-        disp(activation);
-        % Update exact kinematics and state estimation with noise
-        x_next = robots(i).dynamics(v_t,omega);
-        odometry = robots(i).odometry_step(v_t,omega);
-
-        % Save data exact position
-        x_real_robot(i,l) = robots(i).x(1);
-        y_real_robot(i,l) = robots(i).x(2);
-        theta_real_robot(i,l) = robots(i).x(3);
-
-        % Save data estimated position with only speed sensor
-        x_est_robot(i,l) = robots(i).x_est(1);
-        y_est_robot(i,l) = robots(i).x_est(2);
-        theta_est_robot(i,l) = robots(i).x_est(3);
-
-
-        % Do EKF prediction + correction
-        MHEKFs(i).EKF_prediction(robots(i).odometry_estimation, dt,d);
-        MHEKFs(i).EKF_correction(sigma_meas,[robots(i).x(1),robots(i).x(2),robots(i).x(3)]);
-        EKF_x(i,l) = MHEKFs(i).x(1);
-        EKF_y(i,l) = MHEKFs(i).x(2);
-        EKF_theta(i,l) = MHEKFs(i).x(3);
-
       
+            % Run obstacle avoidance algorithm
+            obstacle_avoidance_algorithm;
 
-        % When I'm close to first target change to second
-        if (robots(i).getDistance(target_considered(1),target_considered(2)) < 1  )
-            %target_considered = targets(2,:);
-        end
+            % Consensus algorithm
+            consensus_algorithm;
 
- 
+            % Save estimated position with only UWB sensor trilateration
+            % terna
+            pose_est_UWB{i,k} = [StoreEst(1,end,1), StoreEst(1,end,2), StoreEst(1,end,3)];
+    
+            % Update exact kinematics and state estimation with noise
+            x_next = robots(i).dynamics(v_t,omega);
 
+            % Dynamic history real position
+            robots(i).dynamics_history{k,1} = x_next;
+
+            % Odometry 
+            [odometry, eta_r, eta_l] = robots(i).odometry_step(v_t,omega);
+
+            % EKF
+            EKFs{i}.EKF_prediction(robots(i).odometry_estimation,Setup.dt,d,R, eta_r, eta_l);
+            EKFs{i}.EKF_correction(sigma_meas, [pose_est_UWB{i,k}(1) pose_est_UWB{i,k}(2) pose_est_UWB{i,k}(3)]);
+            EKFs{i}.state_history{k,1} = EKFs{i}.x;
+
+            % Dynamic history estimated position
+            robots(i).odometry_history{k,1} = robots(i).x_est;
+
+    
+            % When I'm close to first target change to second
+            if (robots(i).getDistance(target_considered(1),target_considered(2)) < 0.7 )
+                % i-th robot has reached the target
+                reached(i) = 1;
+            end
+
+            l = l+1;
+            
+    end
+
+    pause(0.01);
+    
+    for i=1:nRobots
+        delete(h1{i});
+    end
+
+    % If every robot has reached it's own target exit the cycle
+    if (reached)
+        break;
     end
 
 end
 
 
 %% ERROR PLOTS
-% Estimated robot position using speed sensors vs exact position
+
+% Estimation errors
+estimation_error = zeros(length(Setup.steps),nRobots);
+
+for i = 1:nRobots
+
+    tmp = cell(1, length(Setup.steps));
+    for k = 1:length(Setup.steps)
+    tmp{1,k} = pose_est_UWB{i,k}(1:end);
+    end
+    indiciNonVuoti = find(~cellfun('isempty', tmp));
+    
+    % Estimated robot position using terna trilateration of UWB sensor
+    figure(i+3);
+    for k = 1:indiciNonVuoti(end)
+       plot(robots(i).dynamics_history{k,1}(1), robots(i).dynamics_history{k,1}(2),'bo','MarkerSize', 2'');
+       hold on
+       plot(pose_est_UWB{i,k}(1), pose_est_UWB{i,k}(2),'r*','MarkerSize', 2'');
+    end
+    xlabel('Coordinate x [m]');
+    ylabel('Coordinate y [m]');
+    legend('Real position','Estimated position with only UWB sensor');
+    title('Localization with consensus algorithm UWB terna only');
+    grid on;
+    
+    figure(i+5);
+    for k = 1:indiciNonVuoti(end)
+       plot(k, norm( robots(i).dynamics_history{k,1}(1) - pose_est_UWB{i,k}(1), robots(i).dynamics_history{k,1}(2) - pose_est_UWB{i,k}(2)),'bo','MarkerSize', 2'');
+       hold on
+    end
+    xlabel('Steps');
+    ylabel('Error norm [m]');
+    title('Error norm with consensus algorithm UWB terna only');
+    grid on;
+
+    
+    
+    figure(i+7);
+    for k = 1:indiciNonVuoti(end)
+        plot(robots(i).dynamics_history{k,1}(1), robots(i).dynamics_history{k,1}(2),'bo','MarkerSize', 2'');
+        hold on
+        plot(EKFs{i}.state_history{k,1}(1), EKFs{i}.state_history{k,1}(2),'r*','MarkerSize', 2'')
+    end
+    xlabel('Coordinate x [m]');
+    ylabel('Coordinate y [m]');
+    legend('Real position','Estimated position with EKF');
+    title('Localization with EKF of speed sensor + UWB terna trilateration');
+    grid on;
+    
+    
+    figure(i+9);
+    for k = 1:indiciNonVuoti(end)
+       estimation_error(k,i) = norm( robots(i).dynamics_history{k,1}(1) - EKFs{i}.state_history{k,1}(1), robots(i).dynamics_history{k,1}(2) - EKFs{i}.state_history{k,1}(2));
+       plot(k, norm( robots(i).dynamics_history{k,1}(1) - EKFs{i}.state_history{k,1}(1), robots(i).dynamics_history{k,1}(2) - EKFs{i}.state_history{k,1}(2)),'bo','MarkerSize', 2'');
+       hold on
+    end
+    xlabel('Steps');
+    ylabel('Error norm [m]');
+    title('Error norm localization with EKF of speed sensor + UWB terna trilateration');
+    grid on;
+
+
+    figure(i+11);
+    for k = 1:indiciNonVuoti(end)
+       estimation_error(k,i) = norm( robots(i).dynamics_history{k,1}(1) - robots(i).odometry_history{k,1}(1), robots(i).dynamics_history{k,1}(2) - robots(i).odometry_history{k,1}(2));
+       plot(k, norm( robots(i).dynamics_history{k,1}(1) - robots(i).odometry_history{k,1}(1), robots(i).dynamics_history{k,1}(2) - robots(i).odometry_history{k,1}(2)),'bo','MarkerSize', 2'');
+       hold on
+    end
+    xlabel('Steps');
+    ylabel('Error norm [m]');
+    title('Error norm localization real vs estimated with speed sensor');
+    grid on;
+
+
+    figure(i+13)
+    for k = 1:indiciNonVuoti(end)
+       plot(k, robots(i).dynamics_history{k,1}(3).*to_grad,'bo','MarkerSize', 2'');
+       hold on
+       plot(k, EKFs{i}.state_history{k,1}(3).*to_grad,'r*','MarkerSize', 2'');
+    end
+    xlabel('Step');
+    ylabel('Coordinate theta [°]');
+    legend('Real angle','Estimated angle with EKF of speed sensor + UWB');
+    title('Orientation with EKF of speed sensor + UWB terna trilateration');
+    grid on;
+
+
+    figure(i+15)
+    for k = 1:indiciNonVuoti(end)
+       plot(k, norm(robots(i).dynamics_history{k,1}(1) - robots(i).odometry_history{k,1}(1),robots(i).dynamics_history{k,1}(2) - robots(i).odometry_history{k,1}(2)),'bo','MarkerSize', 2'');
+       hold on
+       plot(k, norm(robots(i).dynamics_history{k,1}(1) - EKFs{i}.state_history{k,1}(1),robots(i).dynamics_history{k,1}(2) - EKFs{i}.state_history{k,1}(2)),'r*','MarkerSize', 2'');
+       plot(k,norm( robots(i).dynamics_history{k,1}(1) - pose_est_UWB{i,k}(1), robots(i).dynamics_history{k,1}(2) - pose_est_UWB{i,k}(2)),'go','MarkerSize', 2'');
+    end
+    xlabel('Step');
+    ylabel('Coordinate theta [°]');
+    legend('Real-estimated speed sensor','Real-EKF','Real - UWB only');
+    title('Errors');
+    grid on;
+
+
+    hold off;
+end
+
+
+% Plot mean error
+mean_error = mean(estimation_error,2);
+idx = find(mean_error==0);
 figure();
-plot(x_real_robot(1,:),y_real_robot(1,:),'bo','MarkerSize', 2'');
-hold on
-plot(x_est_robot(1,:),y_est_robot(1,:),'c*','MarkerSize', 2'');
-grid on;
-xlabel('Coordinate x [m]');
-ylabel('Coordinate y [m]');
-legend('Real position','Estimated position with speed sens.');
-title('Real position of robot vs position measured with only speed sensor');
-hold off;
-
-% USING EKF
-figure();
-plot(EKF_x(1,:), EKF_y(1,:),'c*','MarkerSize', 2'');
-hold on
-plot(x_real_robot(1,:),y_real_robot(1,:),'bo','MarkerSize', 2'');
-grid on;
-xlabel('Coordinate x [m]');
-ylabel('Coordinate y [m]');
-legend('EKF state','Real state');
-title('Kalman filter');
-hold off;
-
-
-% Plot errors
-figure()
-plot(time,x_est_robot(1,:)-x_real_robot(1,:),'k--');
-hold on
-plot(time,y_est_robot(1,:)-y_real_robot(1,:),'g--');
-grid on;
-xlabel('Time [s]');
+plot(1:length(mean_error(1:idx(1)))-1,mean_error(1:idx(1)-1));
+title('Mean error Position');
+xlabel('Step');
 ylabel('Error [m]');
-legend('Error x [m]','Error y [m]');
-title('Error: estimated state using speed sensors vs Real state (x,y,theta)');
-hold off;
-
-figure()
-plot(time,(theta_est_robot(1,:)-theta_real_robot(1,:)).*to_grad,'b--');
 grid on;
-xlabel('Time [s]');
-ylabel('Error [°]');
-legend('Error theta [°]');
-title('Error: estimated state using speed sensors vs Real state (x,y,theta)');
-hold off;
-
-
-figure()
-plot(time,EKF_x(1,:)-x_real_robot(1,:),'k--');
-hold on
-plot(time,EKF_y(1,:)-y_real_robot(1,:),'g-');
-grid on;
-xlabel('Time [s]');
-ylabel('Error [m]');
-legend('Error x [m]','Error y [m]');
-title('Error: estimated state using EFK (UWB + speed sensors) vs Real position');
-hold off;
-
-
-figure();
-plot(time,(EKF_theta(1,:)-theta_real_robot(1,:)).*to_grad,'b--');
-grid on;
-xlabel('Time [s]');
-ylabel('Error [°]');
-legend('Error theta [°]');
-title('Error: estimated state using EFK (UWB + speed sensors) vs Real position');
-hold off;
-
-
-
-
-

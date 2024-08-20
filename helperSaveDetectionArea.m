@@ -16,8 +16,8 @@ function [detArea, bbox] = helperSaveDetectionArea(axesDet,detAreaHandles)
     bbox = [pos_min pos_max-pos_min];
     I = zeros(uint8(bbox(4)*res),uint8(bbox(3)*res),'uint8');
     hold on
-    imageHandle = image(axesDet,[bbox(1) bbox(1)+bbox(3)],[bbox(2) bbox(2)+bbox(4)],I,...
-        "Visible","on");
+    %imageHandle = image(axesDet,[bbox(1) bbox(1)+bbox(3)],[bbox(2) bbox(2)+bbox(4)],I,...
+        %"Visible","on");
     detArea = I;
     [nr, nc] = size(I);
     for k = 1:numel(detAreaHandles)
