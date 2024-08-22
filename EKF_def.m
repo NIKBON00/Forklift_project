@@ -53,24 +53,19 @@ classdef EKF_def<handle
 
 
         % Function that computes the prediction step of state
-        function EKF_prediction(obj,speed_readings,dt,d,R, eta_r, eta_l)
+        function EKF_prediction(obj,speed_readings,dt,d,R)
 
             o_v_t = speed_readings{1,1}(1);
             o_omega = speed_readings{1,1}(2);
 
-            %vt_r = (2*o_v_t + d*o_omega)/2;
-            %vt_l = (2*o_v_t - d*o_omega)/2;
-
             % process noise covariance matrix
             Q = speed_readings{1,2};
-            
-            
+                        
             % Current states
             x_curr = obj.x(1);
             y_curr = obj.x(2);
             theta_curr = obj.x(3);
            
-
             % Current covariance state estimation errors
             P_curr = obj.P;
 
@@ -80,19 +75,18 @@ classdef EKF_def<handle
             % Jacobian of noise initialization
             W = zeros(3,2);
 
-  
 
             %% PREDICTION STEP
             % STATE KINEMATICS
-
             x_next = x_curr + o_v_t*dt*cos(theta_curr + dt*o_omega/2);
             y_next = y_curr + o_v_t*dt*sin(theta_curr + dt*o_omega/2);
             theta_next = theta_curr + o_omega*dt;
+            
             % Jacobian of State
             F(1,1) = 1;
             F(1,3) = -o_v_t*dt*sin(theta_curr + dt*o_omega/2);
             F(2,2) = 1;
-            F(2,3) = o_v_t*dt*cos(theta_curr + dt*o_omega/2);
+            F(2,3) = o_v_t*dt*cos(theta_curr  + dt*o_omega/2);
             F(3,3) = 1;
 
             % Jacobian of Noise
@@ -102,17 +96,14 @@ classdef EKF_def<handle
             W(2,2) = 0.5*dt*R*sin(theta_curr + dt*o_omega/2) - (o_v_t*dt/2)*cos(theta_curr + dt*o_omega/2)*dt*R/(2*d);
             W(3,1) = R*dt/d;
             W(3,2) = -R*dt/d;
-
-            %end
         
             % State
             obj.x = [x_next;y_next;theta_next];
 
         
-           
            %% PREDICTION STEP COVARIANCE STATE
 
-           P_next = F*P_curr*F'+ W*Q*W';
+           P_next = F*P_curr*F' + W*Q*W';
            obj.P = P_next;
 
         end
@@ -129,26 +120,24 @@ classdef EKF_def<handle
             P_curr = obj.P;
 
             % Measurement noise covariance matrix
-            R = diag([sigma_meas(1) sigma_meas(2) sigma_meas(3)]); 
+            R = diag([sigma_meas(1) sigma_meas(2) sigma_meas(3)]); % [sigma_x, sigma_y, sigma_theta]
             
             % Jacobian matrix of output
-            H = zeros(3,3);
-            H(1,1) = 1;
-            H(2,2) = 1;
-            H(3,3) = 1;         
-            
+            H = diag([1 1 1]);  
 
+            % Compute the kalman gain
             Kalman_gain = P_curr*H'*pinv(H*P_curr*H'+R);
 
-
             % Calculation of innovation
-            innovation = [measurements_readings(1) - x_curr, measurements_readings(2) - y_curr, measurements_readings(3)-theta_curr]';
+            innovation_theta = measurements_readings(3)-theta_curr;
+            innovation_theta = atan2(sin(innovation_theta),cos(innovation_theta));
+            innovation = [measurements_readings(1) - x_curr, measurements_readings(2) - y_curr, innovation_theta]';
 
-            obj.innovation_history = [obj.innovation_history;innovation];
+            obj.innovation_history = [obj.innovation_history,innovation];
 
-            state_next = [x_curr;y_curr;theta_curr] + Kalman_gain*innovation;
+            state_next = [x_curr;y_curr; theta_curr] + Kalman_gain*innovation;
 
-            P_next = (eye(3)-Kalman_gain*H)*P_curr;
+            P_next = (eye(3)-Kalman_gain*H)*P_curr*(eye(3)-Kalman_gain*H)' + Kalman_gain*R*Kalman_gain';
 
             % Update the weight
             obj.weight = obj.weight*exp(-0.5*innovation.^2./(H*P_next*H'+R));

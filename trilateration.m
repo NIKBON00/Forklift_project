@@ -8,6 +8,7 @@ function [position, residual] = trilateration(antenna_positions, distances)
 
     % Numero di antenne
     N = size(antenna_positions, 1);
+ 
 
     if N < 3
         error('Devi avere almeno tre antenne per eseguire la trilaterazione in 2D.');

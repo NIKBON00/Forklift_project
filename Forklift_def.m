@@ -112,7 +112,7 @@ classdef Forklift_def < handle
         end
 
 
-        function [odometry_estimation, eta_r, eta_l] = odometry_step(obj,u_v_t,u_omega)
+        function odometry_estimation = odometry_step(obj,u_v_t,u_omega)
             
             % Speed sensor measurements retrieve
             [omega_r,omega_l] = calculus_vec(obj,u_v_t,u_omega);
@@ -152,8 +152,8 @@ classdef Forklift_def < handle
         function  [omega_r,omega_l] = calculus_vec(obj,v_t,omega)
            
            % Calculus of right and left front wheels speed 
-           omega_r = 2*v_t - (2*v_t*obj.R - omega*obj.d)/(obj.R + 1);
-           omega_l = (2*v_t*obj.R - omega*obj.d)/(obj.R*(obj.R + 1));
+           omega_r = (2*v_t + omega*obj.d)/(2*obj.R);
+           omega_l = (2*v_t - omega*obj.d)/(2*obj.R);
            
         end
 
@@ -162,8 +162,8 @@ classdef Forklift_def < handle
         % Distance of robot from target
         function distance = getDistance(obj,x_t,y_t)
 
-            x_r = obj.x(1);
-            y_r = obj.x(2);
+            x_r = obj.x_est(1);
+            y_r = obj.x_est(2);
 
             distance = sqrt((x_r - x_t)^2 + (y_r - y_t)^2);
 

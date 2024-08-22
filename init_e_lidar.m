@@ -12,7 +12,7 @@ Setup.Time = 0:Setup.dt:100;        % [s]
 Setup.steps = Setup.Time/Setup.dt;        % [-]
 
 % Number of robots:
-nRobots = 2;
+nRobots = 1;
 robots=[];                          % Vector of robot structures
 
 % Parameter of robot:
@@ -20,27 +20,27 @@ d = 1.5;                            % width [m]
 L = 2.8;                            % length [m]
 R = 0.23;                           % radius wheel [m]
 weigh_init = 0;
-K_r = 0.01;                    % costant parameter contributing to noise in speed right sensor 
-K_l = 0.01;                    % costant parameter contributing to noise in speed left  sensor
-sigma_meas = [0.005 0.005 0.005];        % noise on UWB
+K_r = 0.02;                        % costant parameter contributing to noise in speed right sensor 
+K_l = 0.02;                        % costant parameter contributing to noise in speed left  sensor
+sigma_meas = [0.2 0.2 0.1];       % noise on UWB
 
 % Collision avoidance variables:
 k_att = 1.1547;                     % attraction costant
 k_rep = 0.0932;                     % repulsion costant
-Kp_v_t = 20;                        % speed gain
-Kp_omega = 5;                       % omega gain
+Kp_v_t = 10;                        % speed gain
+Kp_omega = 2;                       % omega gain
 dstar = 0.3;                        % threshold distance for type of attractive force [m]   
 rho_0 = 2.5;                        % safe distance [m]
 error_theta_max = deg2rad(45);      % error angle max [rad]
-v_max = 5;                        % [m/s] 
-omega_max = 0.8*pi;                 % [rad/s]
+v_max = 2;                          % [m/s] 
+omega_max = 0.6*pi;                 % [rad/s]
 n=1;                                % exponent of repulsion force
 
 % Entrance:
 inital_state = cell(nRobots,1);                 % [m]
 
 % Targets:
-targets = [45,20; 15, 40; 50, 40; 40, 19];      % [m]
+targets = [15, 40; 45,20; 50, 40; 40, 19];      % [m]
 
 % General variables:
 to_grad = 180/pi;       % [°]
@@ -62,13 +62,13 @@ UWB_sens = [10,10; 10,40; 70,10; 70,50; 40, 36; 51, 22];
 
 % Position of UWB tags on the robot in robot reference frame, necessary 2
 % tags
-robots_tags = [0, L; 0, -L ]; 
+robots_tags = [0, L; 0, -L]; 
 
 
 %% ROBOT INITIALIZATION
 
 for i=1:nRobots
-    inital_state{i} = [rand()*10 + 2, rand()*10 + 1 , rand()*2*pi];        % random entrace
+    inital_state{i} = [2, 2 , 0];        % random entrace
     robot = Forklift_def(inital_state{i},d,R,Setup.dt,K_r,K_l,nM,NaN);     % initialization of robot structure  
     robots = [robots,robot];                                               % Add i-th robot to global vector
 end
@@ -77,7 +77,7 @@ end
 
 for i=1:nRobots
         EKFs{i} = EKF_def();
-        EKFs{i}.EKF_init(weigh_init,inital_state{i},zeros(3,3));
+        EKFs{i}.EKF_init(weigh_init,inital_state{i},diag([0.2, 0.2, 0.5]));
 end
 
 
@@ -159,11 +159,16 @@ for k=1:length(Setup.steps)
 
             % Consensus algorithm
             consensus_algorithm;
-
+       
             % Save estimated position with only UWB sensor trilateration
             % terna
             pose_est_UWB{i,k} = [StoreEst(1,end,1), StoreEst(1,end,2), StoreEst(1,end,3)];
-    
+            
+            % Extended Kalman Filter
+            EKFs{i}.EKF_prediction(robots(i).odometry_estimation,Setup.dt,d,R);
+            EKFs{i}.EKF_correction(sigma_meas, [pose_est_UWB{i,k}(1) pose_est_UWB{i,k}(2) pose_est_UWB{i,k}(3)]);
+            EKFs{i}.state_history{k,1} = EKFs{i}.x;
+
             % Update exact kinematics and state estimation with noise
             x_next = robots(i).dynamics(v_t,omega);
 
@@ -171,12 +176,7 @@ for k=1:length(Setup.steps)
             robots(i).dynamics_history{k,1} = x_next;
 
             % Odometry 
-            [odometry, eta_r, eta_l] = robots(i).odometry_step(v_t,omega);
-
-            % EKF
-            EKFs{i}.EKF_prediction(robots(i).odometry_estimation,Setup.dt,d,R, eta_r, eta_l);
-            EKFs{i}.EKF_correction(sigma_meas, [pose_est_UWB{i,k}(1) pose_est_UWB{i,k}(2) pose_est_UWB{i,k}(3)]);
-            EKFs{i}.state_history{k,1} = EKFs{i}.x;
+            odometry = robots(i).odometry_step(v_t,omega);
 
             % Dynamic history estimated position
             robots(i).odometry_history{k,1} = robots(i).x_est;
@@ -193,6 +193,7 @@ for k=1:length(Setup.steps)
     end
 
     pause(0.01);
+    disp(robots(i).x(1));
     
     for i=1:nRobots
         delete(h1{i});
@@ -222,66 +223,61 @@ for i = 1:nRobots
     % Estimated robot position using terna trilateration of UWB sensor
     figure(i+3);
     for k = 1:indiciNonVuoti(end)
-       plot(robots(i).dynamics_history{k,1}(1), robots(i).dynamics_history{k,1}(2),'bo','MarkerSize', 2'');
+       plot(robots(i).dynamics_history{k,1}(1), robots(i).dynamics_history{k,1}(2),'go','MarkerSize', 2'');
        hold on
+       plot(robots(i).odometry_history{k,1}(1), robots(i).odometry_history{k,1}(2),'bo','MarkerSize', 2'');
        plot(pose_est_UWB{i,k}(1), pose_est_UWB{i,k}(2),'r*','MarkerSize', 2'');
     end
     xlabel('Coordinate x [m]');
     ylabel('Coordinate y [m]');
-    legend('Real position','Estimated position with only UWB sensor');
+    legend('True posture','Estimation speed sensor','Estimation only UWB sensor');
     title('Localization with consensus algorithm UWB terna only');
     grid on;
     
     figure(i+5);
     for k = 1:indiciNonVuoti(end)
+       plot(k, norm( robots(i).dynamics_history{k,1}(1) - robots(i).odometry_history{k,1}(1), robots(i).dynamics_history{k,1}(2) - robots(i).odometry_history{k,1}(2)),'go','MarkerSize', 2'')
+       hold on
        plot(k, norm( robots(i).dynamics_history{k,1}(1) - pose_est_UWB{i,k}(1), robots(i).dynamics_history{k,1}(2) - pose_est_UWB{i,k}(2)),'bo','MarkerSize', 2'');
        hold on
     end
     xlabel('Steps');
     ylabel('Error norm [m]');
+    legend('Error norm only speed sensor', 'error norm only UWB')
     title('Error norm with consensus algorithm UWB terna only');
     grid on;
 
     
-    
+ 
     figure(i+7);
     for k = 1:indiciNonVuoti(end)
-        plot(robots(i).dynamics_history{k,1}(1), robots(i).dynamics_history{k,1}(2),'bo','MarkerSize', 2'');
+        plot(robots(i).dynamics_history{k,1}(1), robots(i).dynamics_history{k,1}(2),'go','MarkerSize', 2'');
         hold on
         plot(EKFs{i}.state_history{k,1}(1), EKFs{i}.state_history{k,1}(2),'r*','MarkerSize', 2'')
     end
     xlabel('Coordinate x [m]');
     ylabel('Coordinate y [m]');
-    legend('Real position','Estimated position with EKF');
+    legend('True posture','Estimation with EKF ');
     title('Localization with EKF of speed sensor + UWB terna trilateration');
     grid on;
     
     
     figure(i+9);
     for k = 1:indiciNonVuoti(end)
-       estimation_error(k,i) = norm( robots(i).dynamics_history{k,1}(1) - EKFs{i}.state_history{k,1}(1), robots(i).dynamics_history{k,1}(2) - EKFs{i}.state_history{k,1}(2));
-       plot(k, norm( robots(i).dynamics_history{k,1}(1) - EKFs{i}.state_history{k,1}(1), robots(i).dynamics_history{k,1}(2) - EKFs{i}.state_history{k,1}(2)),'bo','MarkerSize', 2'');
+       estimation_error(k,i) = norm( robots(i).dynamics_history{k,1}(1) - EKFs{i}.state_history{k,1}(1),      robots(i).dynamics_history{k,1}(2) - EKFs{i}.state_history{k,1}(2));
+       plot(k, norm( robots(i).dynamics_history{k,1}(1) - EKFs{i}.state_history{k,1}(1),      robots(i).dynamics_history{k,1}(2) - EKFs{i}.state_history{k,1}(2)),'bo','MarkerSize', 2'');
        hold on
+       plot(k, norm( robots(i).dynamics_history{k,1}(1) - pose_est_UWB{i,k}(1),               robots(i).odometry_history{k,1}(2) - pose_est_UWB{i,k}(2)),'go','MarkerSize', 2'' );
+       plot(k, norm( robots(i).dynamics_history{k,1}(1) - robots(i).odometry_history{k,1}(1), robots(i).dynamics_history{k,1}(2) - robots(i).odometry_history{k,1}(2)),'ro','MarkerSize', 2'' );
     end
     xlabel('Steps');
     ylabel('Error norm [m]');
-    title('Error norm localization with EKF of speed sensor + UWB terna trilateration');
+    legend('Error EKF', 'Error UWB', 'Error speed sensor')
+    title('');
     grid on;
 
 
-    figure(i+11);
-    for k = 1:indiciNonVuoti(end)
-       estimation_error(k,i) = norm( robots(i).dynamics_history{k,1}(1) - robots(i).odometry_history{k,1}(1), robots(i).dynamics_history{k,1}(2) - robots(i).odometry_history{k,1}(2));
-       plot(k, norm( robots(i).dynamics_history{k,1}(1) - robots(i).odometry_history{k,1}(1), robots(i).dynamics_history{k,1}(2) - robots(i).odometry_history{k,1}(2)),'bo','MarkerSize', 2'');
-       hold on
-    end
-    xlabel('Steps');
-    ylabel('Error norm [m]');
-    title('Error norm localization real vs estimated with speed sensor');
-    grid on;
-
-
-    figure(i+13)
+    figure(i+11)
     for k = 1:indiciNonVuoti(end)
        plot(k, robots(i).dynamics_history{k,1}(3).*to_grad,'bo','MarkerSize', 2'');
        hold on
@@ -293,20 +289,17 @@ for i = 1:nRobots
     title('Orientation with EKF of speed sensor + UWB terna trilateration');
     grid on;
 
-
-    figure(i+15)
+    figure(i+13)
     for k = 1:indiciNonVuoti(end)
-       plot(k, norm(robots(i).dynamics_history{k,1}(1) - robots(i).odometry_history{k,1}(1),robots(i).dynamics_history{k,1}(2) - robots(i).odometry_history{k,1}(2)),'bo','MarkerSize', 2'');
+       plot(k, robots(i).dynamics_history{k,1}(3).*to_grad,'bo','MarkerSize', 2'');
        hold on
-       plot(k, norm(robots(i).dynamics_history{k,1}(1) - EKFs{i}.state_history{k,1}(1),robots(i).dynamics_history{k,1}(2) - EKFs{i}.state_history{k,1}(2)),'r*','MarkerSize', 2'');
-       plot(k,norm( robots(i).dynamics_history{k,1}(1) - pose_est_UWB{i,k}(1), robots(i).dynamics_history{k,1}(2) - pose_est_UWB{i,k}(2)),'go','MarkerSize', 2'');
+       plot(k, pose_est_UWB{i,k}(3).*to_grad,'r*','MarkerSize', 2'');
     end
     xlabel('Step');
     ylabel('Coordinate theta [°]');
-    legend('Real-estimated speed sensor','Real-EKF','Real - UWB only');
-    title('Errors');
+    legend('Real angle','Estimated angle with  UWB');
+    title('Orientation with  UWB terna trilateration');
     grid on;
-
 
     hold off;
 end
@@ -321,3 +314,19 @@ title('Mean error Position');
 xlabel('Step');
 ylabel('Error [m]');
 grid on;
+
+
+%% Histogram error
+for i = 1:nRobots
+    errors = [];
+    for k = 1:indiciNonVuoti(end)
+        errors = [errors, estimation_error(k,i)];
+    end
+    
+    figure();
+    histogram(errors, 10);
+    xlabel('Error [m]');
+    ylabel('Number of values');
+    title(['Histogram of the error per robot ', num2str(i)]);
+    grid on;
+end
