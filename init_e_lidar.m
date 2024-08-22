@@ -22,7 +22,7 @@ R = 0.23;                           % radius wheel [m]
 weigh_init = 0;
 K_r = 0.02;                        % costant parameter contributing to noise in speed right sensor 
 K_l = 0.02;                        % costant parameter contributing to noise in speed left  sensor
-sigma_meas = [0.2 0.2 0.1];       % noise on UWB
+sigma_meas = [0.4 0.4 0.2];        % noise on UWB
 
 % Collision avoidance variables:
 k_att = 1.1547;                     % attraction costant
