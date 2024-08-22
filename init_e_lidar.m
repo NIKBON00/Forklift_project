@@ -231,7 +231,7 @@ for i = 1:nRobots
     xlabel('Coordinate x [m]');
     ylabel('Coordinate y [m]');
     legend('True posture','Estimation speed sensor','Estimation only UWB sensor');
-    title('Localization with consensus algorithm UWB terna only');
+    title(['Localization with consensus algorithm UWB terna only for robot', num2str(i)]);
     grid on;
     
     figure(i+5);
@@ -258,7 +258,7 @@ for i = 1:nRobots
     xlabel('Coordinate x [m]');
     ylabel('Coordinate y [m]');
     legend('True posture','Estimation with EKF ');
-    title('Localization with EKF of speed sensor + UWB terna trilateration');
+    title(['Localization with EKF of speed sensor + UWB terna trilateration for robot', num2str(i)]);
     grid on;
     
     
@@ -273,7 +273,7 @@ for i = 1:nRobots
     xlabel('Steps');
     ylabel('Error norm [m]');
     legend('Error EKF', 'Error UWB', 'Error speed sensor')
-    title('');
+    title(['Different types of error for robot', num2str(i)]);
     grid on;
 
 
@@ -286,7 +286,7 @@ for i = 1:nRobots
     xlabel('Step');
     ylabel('Coordinate theta [°]');
     legend('Real angle','Estimated angle with EKF of speed sensor + UWB');
-    title('Orientation with EKF of speed sensor + UWB terna trilateration');
+    title(['Orientation with EKF of speed sensor + UWB terna trilateration for robot', num2str(i)]);
     grid on;
 
     figure(i+13)
@@ -298,25 +298,15 @@ for i = 1:nRobots
     xlabel('Step');
     ylabel('Coordinate theta [°]');
     legend('Real angle','Estimated angle with  UWB');
-    title('Orientation with  UWB terna trilateration');
+    title(['Orientation with  UWB terna trilateration for robot', num2str(i)]);
     grid on;
 
     hold off;
 end
 
-
-% Plot mean error
-mean_error = mean(estimation_error,2);
-idx = find(mean_error==0);
-figure();
-plot(1:length(mean_error(1:idx(1)))-1,mean_error(1:idx(1)-1));
-title('Mean error Position');
-xlabel('Step');
-ylabel('Error [m]');
-grid on;
-
-
 %% Histogram error
+
+% For each robot
 for i = 1:nRobots
     errors = [];
     for k = 1:indiciNonVuoti(end)
@@ -327,6 +317,20 @@ for i = 1:nRobots
     histogram(errors, 10);
     xlabel('Error [m]');
     ylabel('Number of values');
-    title(['Histogram of the error per robot ', num2str(i)]);
+    title(['Histogram of the error for robot ', num2str(i)]);
     grid on;
 end
+
+
+% Mean error
+mean_error = mean(estimation_error,2);
+idx = find(mean_error==0);
+figure();
+%plot(1:length(mean_error(1:idx(1)))-1,mean_error(1:idx(1)-1));
+histogram(mean_error(1:idx(1)))
+title('Histogram of mean error');
+xlabel('Error [m]');
+ylabel('Number of values');
+grid on;
+
+
