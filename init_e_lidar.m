@@ -12,7 +12,7 @@ Setup.Time = 0:Setup.dt:100;        % [s]
 Setup.steps = Setup.Time/Setup.dt;        % [-]
 
 % Number of robots:
-nRobots = 1;
+nRobots = 2;
 robots=[];                          % Vector of robot structures
 
 % Parameter of robot:
@@ -348,7 +348,7 @@ idx = find(mean_error==0);
 figure();
 %plot(1:length(mean_error(1:idx(1)))-1,mean_error(1:idx(1)-1));
 histogram(mean_error(1:idx(1)))
-title('Histogram of mean error');
+title('Histogram of mean error of all the robots');
 xlabel('Error [m]');
 ylabel('Number of values');
 grid on;
