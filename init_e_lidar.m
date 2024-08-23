@@ -22,7 +22,7 @@ R = 0.23;                           % radius wheel [m]
 weigh_init = 0;
 K_r = 0.02;                        % costant parameter contributing to noise in speed right sensor 
 K_l = 0.02;                        % costant parameter contributing to noise in speed left  sensor
-sigma_meas = [0.4 0.4 0.2];        % noise on UWB
+sigma_meas = [0.1 0.1 0.12];      % noise on UWB
 
 % Collision avoidance variables:
 k_att = 1.1547;                     % attraction costant
@@ -77,7 +77,7 @@ end
 
 for i=1:nRobots
         EKFs{i} = EKF_def();
-        EKFs{i}.EKF_init(weigh_init,inital_state{i},diag([0.2, 0.2, 0.5]));
+        EKFs{i}.EKF_init(weigh_init,inital_state{i},diag([(2/3)^2, (2/3)^2, (0.3/3)^2]));
 end
 
 
@@ -209,8 +209,9 @@ end
 
 %% ERROR PLOTS
 
-% Estimation errors
+% Estimation errors, respectively position and orientation
 estimation_error = zeros(length(Setup.steps),nRobots);
+estimation_error_theta = zeros(length(Setup.steps),nRobots);
 
 for i = 1:nRobots
 
@@ -231,7 +232,7 @@ for i = 1:nRobots
     xlabel('Coordinate x [m]');
     ylabel('Coordinate y [m]');
     legend('True posture','Estimation speed sensor','Estimation only UWB sensor');
-    title(['Localization with consensus algorithm UWB terna only for robot', num2str(i)]);
+    title(['Localization with consensus algorithm UWB terna only for robot ', num2str(i)]);
     grid on;
     
     figure(i+5);
@@ -244,7 +245,7 @@ for i = 1:nRobots
     xlabel('Steps');
     ylabel('Error norm [m]');
     legend('Error norm only speed sensor', 'error norm only UWB')
-    title('Error norm with consensus algorithm UWB terna only');
+    title(['Error norm with consensus algorithm UWB terna only for robot ', num2str(i)]);
     grid on;
 
     
@@ -258,14 +259,14 @@ for i = 1:nRobots
     xlabel('Coordinate x [m]');
     ylabel('Coordinate y [m]');
     legend('True posture','Estimation with EKF ');
-    title(['Localization with EKF of speed sensor + UWB terna trilateration for robot', num2str(i)]);
+    title(['Localization with EKF of speed sensor + UWB terna trilateration for robot ', num2str(i)]);
     grid on;
     
     
     figure(i+9);
     for k = 1:indiciNonVuoti(end)
        estimation_error(k,i) = norm( robots(i).dynamics_history{k,1}(1) - EKFs{i}.state_history{k,1}(1),      robots(i).dynamics_history{k,1}(2) - EKFs{i}.state_history{k,1}(2));
-       plot(k, norm( robots(i).dynamics_history{k,1}(1) - EKFs{i}.state_history{k,1}(1),      robots(i).dynamics_history{k,1}(2) - EKFs{i}.state_history{k,1}(2)),'bo','MarkerSize', 2'');
+       plot(k, estimation_error(k,i),'bo','MarkerSize', 2'');
        hold on
        plot(k, norm( robots(i).dynamics_history{k,1}(1) - pose_est_UWB{i,k}(1),               robots(i).odometry_history{k,1}(2) - pose_est_UWB{i,k}(2)),'go','MarkerSize', 2'' );
        plot(k, norm( robots(i).dynamics_history{k,1}(1) - robots(i).odometry_history{k,1}(1), robots(i).dynamics_history{k,1}(2) - robots(i).odometry_history{k,1}(2)),'ro','MarkerSize', 2'' );
@@ -273,23 +274,10 @@ for i = 1:nRobots
     xlabel('Steps');
     ylabel('Error norm [m]');
     legend('Error EKF', 'Error UWB', 'Error speed sensor')
-    title(['Different types of error for robot', num2str(i)]);
+    title(['Different types of error for robot ', num2str(i)]);
     grid on;
-
 
     figure(i+11)
-    for k = 1:indiciNonVuoti(end)
-       plot(k, robots(i).dynamics_history{k,1}(3).*to_grad,'bo','MarkerSize', 2'');
-       hold on
-       plot(k, EKFs{i}.state_history{k,1}(3).*to_grad,'r*','MarkerSize', 2'');
-    end
-    xlabel('Step');
-    ylabel('Coordinate theta [°]');
-    legend('Real angle','Estimated angle with EKF of speed sensor + UWB');
-    title(['Orientation with EKF of speed sensor + UWB terna trilateration for robot', num2str(i)]);
-    grid on;
-
-    figure(i+13)
     for k = 1:indiciNonVuoti(end)
        plot(k, robots(i).dynamics_history{k,1}(3).*to_grad,'bo','MarkerSize', 2'');
        hold on
@@ -298,26 +286,58 @@ for i = 1:nRobots
     xlabel('Step');
     ylabel('Coordinate theta [°]');
     legend('Real angle','Estimated angle with  UWB');
-    title(['Orientation with  UWB terna trilateration for robot', num2str(i)]);
+    title(['Orientation with  UWB terna trilateration for robot ', num2str(i)]);
+    grid on;
+
+
+    figure(i+13)
+    for k = 1:indiciNonVuoti(end)
+       plot(k, robots(i).dynamics_history{k,1}(3).*to_grad,'bo','MarkerSize', 2'');
+       hold on
+       plot(k, EKFs{i}.state_history{k,1}(3).*to_grad,'r*','MarkerSize', 2'');
+    end
+    xlabel('Step');
+    ylabel('Coordinate theta [°]');
+    legend('Real angle','Estimated angle with EKF of speed sensor + UWB');
+    title(['Orientation with EKF of speed sensor + UWB terna trilateration for robot ', num2str(i)]);
+    grid on;
+
+
+     figure(i+15)
+    for k = 1:indiciNonVuoti(end)
+        estimation_error_theta(k,i) = (robots(i).dynamics_history{k,1}(3) - EKFs{i}.state_history{k,1}(3)).*to_grad;
+       plot(k, estimation_error_theta(k,i),'bo','MarkerSize', 2'');
+       hold on
+    end
+    xlabel('Step');
+    ylabel('Error [°]');
+    legend('Error on angle');
+    title(['Error with EKF for robot ', num2str(i)]);
     grid on;
 
     hold off;
 end
 
-%% Histogram error
-
+%% Histogram error position
 % For each robot
 for i = 1:nRobots
+
+    tmp = cell(1, length(Setup.steps));
+    for k = 1:length(Setup.steps)
+        tmp{1,k} = pose_est_UWB{i,k}(1:end);
+    end
+    indiciNonVuoti = find(~cellfun('isempty', tmp));
+
     errors = [];
     for k = 1:indiciNonVuoti(end)
-        errors = [errors, estimation_error(k,i)];
+        errors = [errors; estimation_error(k,i)];
     end
     
     figure();
     histogram(errors, 10);
     xlabel('Error [m]');
     ylabel('Number of values');
-    title(['Histogram of the error for robot ', num2str(i)]);
+    title(['Histogram of the position error for robot ', num2str(i)]);
     grid on;
 end
 
@@ -332,5 +352,28 @@ title('Histogram of mean error');
 xlabel('Error [m]');
 ylabel('Number of values');
 grid on;
+
+%% Histogram error orientation
+
+for i = 1:nRobots
+    
+    tmp = cell(1, length(Setup.steps));
+    for k = 1:length(Setup.steps)
+        tmp{1,k} = pose_est_UWB{i,k}(1:end);
+    end
+    indiciNonVuoti = find(~cellfun('isempty', tmp));
+    
+    errors = [];
+    for k = 1:indiciNonVuoti(end)
+        errors = [errors, estimation_error_theta(k,i)];
+    end
+    
+    figure();
+    histogram(errors, 10);
+    xlabel('Error [°]');
+    ylabel('Number of values');
+    title(['Histogram of the orientation error for robot ', num2str(i)]);
+    grid on;
+end
 
 
