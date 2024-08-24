@@ -11,6 +11,8 @@ Cons.a = cell(size(terna,1),1);
 Cons.FlagUsePrevEst = 0;
 Cons.nmsg = 10;
 
+check_occupancy = zeros(size(terna,1),1);
+
 % Position Measurements
 Posmu = zeros(3,1);
 
@@ -24,21 +26,6 @@ distance_tag2 = sqrt( (robots(i).x(1) - L*cos(robots(i).x(3)) - UWB_sens(:,1)).^
 % Consesus rounds
 StoreEst = zeros(size(terna,1),Cons.nmsg+1,3);
 
-
-% Consensus network discovering
-for sen = 1:size(terna,1)
-    % Who has the information talks
-    for sen_2 = 1:size(terna,1)
-        if not(sen_2 == sen)
-        Cons.adj((sen_2), sen) = 1;
-        end
-    end
-end
-
-% Consenus degree
-for ss = 1:size(terna,1)
-    Cons.Degree(ss) = sum(Cons.adj(ss,:)); 
-end
 
 
 % Composite matrices and vectors
@@ -71,10 +58,43 @@ for r = 1:size(terna,1)
 
     % Consensus rounds
     StoreEst(r,1,:) = inv(Cons.F{r})*Cons.a{r};
+
+    % Verify is there's an obstacle between robot position and UWB antenna
+    for jjj = 1:size(antenna_positions,1)
+        isOccupied = check_occup([antenna_positions(jjj,:)], robots(i).x,map);
+        if(isOccupied) == 1
+            break;
+        end
+    end
+
+    % Save the result
+    check_occupancy(r) = isOccupied;
+
 end
 
-   
 
+
+% Consensus network discovering
+for sen = 1:size(terna,1)
+    % Who has the information talks
+    for sen_2 = 1:size(terna,1)
+        if not(sen_2 == sen)
+            if(check_occupancy(sen_2)==0)
+                Cons.adj((sen_2), sen) = 1;     % Can speak correctly if the in terna all antennas see clearly the robot
+            else
+                Cons.adj((sen_2), sen) = 0.6;   % Terna has inside one base stations that see an obstacle, so diluituion of precision
+            end
+        end
+    end
+end
+
+% Consenus degree
+for ss = 1:size(terna,1)
+    Cons.Degree(ss) = sum(Cons.adj(ss,:)); 
+end
+
+
+% Message exchange
 for nMsg = 1:Cons.nmsg
 
         for sen = 1:size(terna,1)

@@ -12,7 +12,7 @@ Setup.Time = 0:Setup.dt:100;        % [s]
 Setup.steps = Setup.Time/Setup.dt;        % [-]
 
 % Number of robots:
-nRobots = 2;
+nRobots = 1;
 robots=[];                          % Vector of robot structures
 
 % Parameter of robot:
@@ -140,7 +140,7 @@ for k=1:length(Setup.steps)
             pc = pointCloud(cart); % the points generally represent the x,y, and z geometric coordinates for samples on a surface or of an environment
     
             % Segment point cloud into clusters based on euclidean distance
-            minDistance = 0.9;
+            minDistance = 1.5*d;
             [labels,numClusters] = pcsegdist(pc,minDistance); % segments a point cloud into clusters, with a minimum Euclidean distance of minDistance between points from different clusters
     
     
@@ -193,7 +193,6 @@ for k=1:length(Setup.steps)
     end
 
     pause(0.01);
-    disp(robots(i).x(1));
     
     for i=1:nRobots
         delete(h1{i});
