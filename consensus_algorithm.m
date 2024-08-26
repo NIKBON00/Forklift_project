@@ -82,7 +82,7 @@ for sen = 1:size(terna,1)
             if(check_occupancy(sen_2)==0)
                 Cons.adj((sen_2), sen) = 1;     % Can speak correctly if the in terna all antennas see clearly the robot
             else
-                Cons.adj((sen_2), sen) = 0.6;   % Terna has inside one base stations that see an obstacle, so diluituion of precision
+                Cons.adj((sen_2), sen) = 0.2;   % Terna has inside one base stations that see an obstacle, so diluituion of precision
             end
         end
     end
@@ -99,7 +99,7 @@ for nMsg = 1:Cons.nmsg
 
         for sen = 1:size(terna,1)
             for sen_2 = 1:size(terna,1)
-                 if Cons.adj(sen,sen_2)
+                 if Cons.adj(sen,sen_2)>0
                      % Metropolis-Hastings weighting
                      q_ij = 1/max(Cons.Degree(sen), Cons.Degree(sen_2) + 1);
                      Cons.F{sen} = Cons.F{sen} + q_ij * (Cons.F{sen_2} - Cons.F{sen}); 
