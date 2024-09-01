@@ -1,6 +1,6 @@
-clc;
-clear all;
-close all;
+%clc;
+%clear all;
+%close all;
 
 %% PARAMETERS OF FIRST SIMULATION
 
@@ -26,7 +26,7 @@ sigma_meas = [0.1 0.1 0.06];        % noise on UWB
 % Collision avoidance variables:
 k_att = 1.1547;                     % attraction costant
 k_rep = 0.0932;                     % repulsion costant
-Kp_v_t = 10;                        % speed gain
+Kp_v_t = 12;                        % speed gain
 Kp_omega = 2;                       % omega gain
 dstar = 0.3;                        % threshold distance for type of attractive force [m]   
 rho_0 = 2.5;                        % safe distance [m]
@@ -39,7 +39,7 @@ n=1;                                % exponent of repulsion force
 inital_state = cell(nRobots,1);                 % [m]
 
 % Targets:
-targets = [15, 40; 45,20; 50, 40; 40, 19];      % [m]
+targets = [generate_random_point([11, 40],2); generate_random_point([50,23],5);generate_random_point([50, 42],2); generate_random_point([45, 19],3)];      % [m]
 
 % General variables:
 to_grad = 180/pi;                   % [°]
@@ -67,9 +67,9 @@ robots_tags = [0, L/2; 0, -L/2];
 %% ROBOT INITIALIZATION
 
 for i=1:nRobots
-    inital_state{i} = [2, 2 , 0];                                          % Initial state of the robot
-    robot = Forklift_def(inital_state{i},d,R,Setup.dt,K_r,K_l);            % initialization of robot structure  
-    robots = [robots,robot];                                               % Add i-th robot to global robot vector
+    inital_state{i} = [generate_random_point([4,5],2), -pi/4 + (pi/2 + pi/4)*rand()];   % Initial state of the robot
+    robot = Forklift_def(inital_state{i},d,R,Setup.dt,K_r,K_l);                         % initialization of robot structure  
+    robots = [robots,robot];                                                            % Add i-th robot to global robot vector
 end
 
 %% EKF INITIALIZATION
@@ -232,7 +232,7 @@ for i = 1:nRobots
     end
     indiciNonVuoti = find(~cellfun('isempty', tmp));
     
-    
+    %{
     % Estimated robot position using terna trilateration of UWB sensor
     figure();
     for k = 1:indiciNonVuoti(end)
@@ -245,11 +245,13 @@ for i = 1:nRobots
     end
     xlabel('Coordinate x [m]');
     ylabel('Coordinate y [m]');
+    xlim([0,55]);
+    ylim([0,55]);
     legend('True posture','Speed sensor pos. estimate','UWB sensor pos. estimate','EKF pos. estimate');
     title(['Position estimation for robot ', num2str(i)]);
     grid on
     
-
+    %}
 %{
     figure();
     for k = 1:indiciNonVuoti(end)
@@ -314,30 +316,37 @@ for i = 1:nRobots
     
     %}
 
-     figure()
+    
+     %figure()
     for k = 1:indiciNonVuoti(end)
         esti_speed = abs( (robots(i).dynamics_history{k,1}(3) -robots(i).odometry_history{k,1}(3)) ).*to_grad;
         esti_UWB = abs( (robots(i).dynamics_history{k,1}(3) - pose_est_UWB{i,k}(3) )).*to_grad;
         estimation_error_theta(k,i) = abs((robots(i).dynamics_history{k,1}(3) - EKFs{i}.state_history{k,1}(3))).*to_grad;
         estimation_error_trace(k,i) = trace(EKFs{i}.P);
+        estimation_error(k,i) = norm( robots(i).dynamics_history{k,1}(1) - EKFs{i}.state_history{k,1}(1),      robots(i).dynamics_history{k,1}(2) - EKFs{i}.state_history{k,1}(2));
 
+        
        plot(k,esti_speed,'ro','MarkerSize', 2'');
        hold on
        plot(k,esti_UWB,'go','MarkerSize', 2'');
        plot(k, estimation_error_theta(k,i),'bo','MarkerSize', 2'');
        hold on
+        
     end
+    %{
     xlabel('Step');
     ylabel('Error on \theta [°]');
     legend('Error speed orient. estimate','Error UWB orient. estimate','Error EFK orient. estimate');
     title(['Different types of error for robot ', num2str(i)]);
     grid on;
-   
+    %}
+    
 
-    hold off;
+    %hold off;
 end
 
 %% Histogram error position
+
 
 % Errors on position (x,y), orientation and P_trace
 E_position = zeros(i,1);
@@ -378,10 +387,14 @@ E_position = sum(E_position)/i;  % [m]
 E_trace = sum(E_trace)/i;
 
 
+
 % Mean error. To compute it we remove the 0 terms in the estimation_error
 % matrix
 mean_error = mean(estimation_error,2);
 idx = find(mean_error==0);
+if (idx)>0
+    mean_error = mean_error(1:idx(1));
+end
 figure();
 %plot(1:length(mean_error(1:idx(1)))-1,mean_error(1:idx(1)-1));
 histogram(mean_error(1:idx(1)))
@@ -389,6 +402,7 @@ title('Histogram of position mean error of all the robots');
 xlabel('Error [m]');
 ylabel('Number of values');
 grid on;
+
 
 %% Histogram error orientation
 
@@ -400,15 +414,15 @@ for i = 1:nRobots
     end
     indiciNonVuoti = find(~cellfun('isempty', tmp));
     
-    errors = [];
+    errors_o = [];
     for k = 1:indiciNonVuoti(end)
-        errors = [errors, estimation_error_theta(k,i)];
+        errors_o = [errors_o; estimation_error_theta(k,i)];
     end
     
-    E_orientation(i) = sum(errors)/k;
+    E_orientation(i) = sum(errors_o)/k;
 
     figure();
-    histogram(errors, 10);
+    histogram(errors_o, 10);
     xlabel('Error [°]');
     ylabel('Number of values');
     title(['Histogram of the orientation error for robot ', num2str(i)]);
@@ -421,15 +435,21 @@ E_orientation = sum(E_orientation)/i;   % [°]
 
 % Mean error. To compute it we remove the 0 terms in the estimation_error_theta
 % matrix
-mean_error = mean(estimation_error_theta,2);
-idx = find(mean_error==0);
+mean_error_theta = mean(estimation_error_theta,2);
+idx_theta = find(mean_error_theta==0);
+if (idx_theta)>0
+    mean_error_theta = mean_error_theta(1:idx_theta(1));
+end
 figure();
-%plot(1:length(mean_error(1:idx(1)))-1,mean_error(1:idx(1)-1));
-histogram(mean_error(1:idx(1)))
+%plot(1:length(mean_error_theta(1:idx_theta(1)))-1,mean_error_theta(1:idx_theta(1)-1));
+histogram(mean_error_theta(1:idx_theta(1)))
 title('Histogram of orientation mean error of all the robots');
 xlabel('Error [°]');
 ylabel('Number of values');
 grid on;
+
+
+
 
 
 
