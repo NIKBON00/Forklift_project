@@ -39,7 +39,7 @@ indexes = find(errors_total==0);
 errors_total(indexes)=[];
 
 figure();
-histogram(vet_tot);
+histogram(errors_total);
 grid on;
 xlabel('Error [m]');
 ylabel('Number of values');

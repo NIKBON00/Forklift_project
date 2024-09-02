@@ -75,16 +75,29 @@ end
 % Consensus network discovering
 for sen = 1:size(terna,1)
     % Who has the information talks
-    for sen_2 = 1:size(terna,1)
-        if not(sen_2 == sen)
-            if(check_occupancy(sen_2)==0)
-                Cons.adj((sen_2), sen) = 1;     % Can speak correctly if the in terna all antennas see clearly the robot (there's no obstacle)
-            else
-                Cons.adj((sen_2), sen) = 0.2;   % Terna has inside one base stations that see an obstacle, so diluituion of precision
-            end
+    for sen_2 = (sen + 1) :size(terna,1)
+        if (check_occupancy(sen)==0 && check_occupancy(sen_2)==0)
+            weight = 1;                 % speak correctly
+        else
+            weight = 0.2;               % obstacle present
         end
+ 
+        % Assign weight
+        Cons.adj(sen, sen_2) = weight;      
+        Cons.adj(sen_2, sen) = weight;      % Made matrix symmetric
+    end
+
+end
+
+%{
+% Make adjancency matrix sthocastic (normalize each row of the matrix, in order to have of the elements of the row = 1)
+for sen = 1:size(terna,1)
+    row_sum = sum(Cons.adj(sen,:));
+    if row_sum>0
+        Cons.adj(sen,:) = Cons.adj(sen,:)/row_sum;
     end
 end
+%}
 
 
 % Consenus degree

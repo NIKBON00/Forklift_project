@@ -232,7 +232,7 @@ for i = 1:nRobots
     end
     indiciNonVuoti = find(~cellfun('isempty', tmp));
     
-    %{
+    
     % Estimated robot position using terna trilateration of UWB sensor
     figure();
     for k = 1:indiciNonVuoti(end)
@@ -251,7 +251,7 @@ for i = 1:nRobots
     title(['Position estimation for robot ', num2str(i)]);
     grid on
     
-    %}
+    
 %{
     figure();
     for k = 1:indiciNonVuoti(end)
@@ -282,7 +282,7 @@ for i = 1:nRobots
     grid on;
  %}
     
-    %{
+    
     figure();
     for k = 1:indiciNonVuoti(end)
        estimation_error(k,i) = norm( robots(i).dynamics_history{k,1}(1) - EKFs{i}.state_history{k,1}(1),      robots(i).dynamics_history{k,1}(2) - EKFs{i}.state_history{k,1}(2));
@@ -296,10 +296,10 @@ for i = 1:nRobots
     legend('Error EKF', 'Error UWB', 'Error speed sensor')
     title(['Different types of error for robot ', num2str(i)]);
     grid on;
-    
     %}
+    
   
-    %{
+    
     figure()
     for k = 1:indiciNonVuoti(end)
        plot(k, robots(i).dynamics_history{k,1}(3).*to_grad,'go','MarkerSize', 2'');
@@ -314,10 +314,10 @@ for i = 1:nRobots
     title(['Orientation estimation for robot ', num2str(i)]);
     grid on;
     
-    %}
+  %}
 
     
-     %figure()
+    figure();
     for k = 1:indiciNonVuoti(end)
         esti_speed = abs( (robots(i).dynamics_history{k,1}(3) -robots(i).odometry_history{k,1}(3)) ).*to_grad;
         esti_UWB = abs( (robots(i).dynamics_history{k,1}(3) - pose_est_UWB{i,k}(3) )).*to_grad;
@@ -333,16 +333,16 @@ for i = 1:nRobots
        hold on
         
     end
-    %{
+    
     xlabel('Step');
     ylabel('Error on \theta [°]');
     legend('Error speed orient. estimate','Error UWB orient. estimate','Error EFK orient. estimate');
     title(['Different types of error for robot ', num2str(i)]);
     grid on;
-    %}
+    
     
 
-    %hold off;
+    hold off;
 end
 
 %% Histogram error position
@@ -380,6 +380,7 @@ for i = 1:nRobots
     title(['Histogram of the position error for robot ', num2str(i)]);
     grid on;
     hold off;
+    
 end
 
 % Total position and P_trace errors
@@ -395,6 +396,7 @@ idx = find(mean_error==0);
 if (idx)>0
     mean_error = mean_error(1:idx(1));
 end
+
 figure();
 %plot(1:length(mean_error(1:idx(1)))-1,mean_error(1:idx(1)-1));
 histogram(mean_error(1:idx(1)))
@@ -427,6 +429,7 @@ for i = 1:nRobots
     ylabel('Number of values');
     title(['Histogram of the orientation error for robot ', num2str(i)]);
     grid on;
+
 end
 
 % Total orientation error
@@ -440,6 +443,7 @@ idx_theta = find(mean_error_theta==0);
 if (idx_theta)>0
     mean_error_theta = mean_error_theta(1:idx_theta(1));
 end
+
 figure();
 %plot(1:length(mean_error_theta(1:idx_theta(1)))-1,mean_error_theta(1:idx_theta(1)-1));
 histogram(mean_error_theta(1:idx_theta(1)))
@@ -447,7 +451,6 @@ title('Histogram of orientation mean error of all the robots');
 xlabel('Error [°]');
 ylabel('Number of values');
 grid on;
-
 
 
 
