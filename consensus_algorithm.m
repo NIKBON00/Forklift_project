@@ -89,15 +89,6 @@ for sen = 1:size(terna,1)
 
 end
 
-%{
-% Make adjancency matrix sthocastic (normalize each row of the matrix, in order to have of the elements of the row = 1)
-for sen = 1:size(terna,1)
-    row_sum = sum(Cons.adj(sen,:));
-    if row_sum>0
-        Cons.adj(sen,:) = Cons.adj(sen,:)/row_sum;
-    end
-end
-%}
 
 
 % Consenus degree
